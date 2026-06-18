@@ -152,21 +152,207 @@ Khi review lai sau nay, chi can doi chieu 3 file tren voi muc tieu role va 4 len
 
 ## Phan 2: Gatekeeper + 4 constraint
 
-### Viec can lam
+### Muc tieu can dat
 
-- Cai Gatekeeper controller qua GitOps:
-  - Tao `argocd/apps/gatekeeper.yaml`.
-  - Dat sync-wave som de controller len truoc.
-- Su dung `ConstraintTemplate` tu `gatekeeper-library`, khong can tu viet Rego cho 4 luat nay.
-- Tao thu muc `gatekeeper/constraints/`.
-- Dat trong do:
-  - cac `ConstraintTemplate` can dung,
-  - 4 `Constraint`,
-  - 1 app/manifests neu repo cua ban can de ArgoCD quan ly phan nay.
-- Dam bao thu tu ap dung:
-  1. controller
-  2. `ConstraintTemplate`
-  3. `Constraint`
+- Cai OPA Gatekeeper qua GitOps.
+- Co 4 constraint chan manifest xau tai admission.
+- Thu deploy resource vi pham phai bi reject.
+- Platform hien tai van dung duoc sau khi bat enforce.
+
+### File can tao / sua
+
+- Tao `argocd/apps/gatekeeper.yaml`
+- Tao `argocd/apps/gatekeeper-constraints.yaml`
+- Tao thu muc `gatekeeper/constraints/`
+- Tao 4 `ConstraintTemplate`
+- Tao 4 `Constraint`
+
+### Cach lam tung buoc
+
+#### Buoc 1: Kiem tra workload hien tai truoc khi enforce
+
+Truoc khi viet policy, doc workload dang chay cua platform de tranh tu khoa chan chinh minh.
+
+Trong repo nay, file can check dau tien la:
+
+- `app-api/rollout.yaml`
+
+Nhung diem can doi:
+
+- image co dang dung `:latest` khong
+- co `resources.limits` khong
+- co `runAsUser: 0` khong
+- co `hostNetwork: true` khong
+
+Trong repo hien tai:
+
+- image la `gitops-rbac-api:0.0.1` -> khong dung `:latest`
+- da co `resources.limits`
+- khong thay `runAsUser: 0`
+- khong thay `hostNetwork: true`
+
+Tuc la app `api` hien tai khong bi 4 luat nay chan.
+
+#### Buoc 2: Cai Gatekeeper controller qua ArgoCD
+
+Tao `argocd/apps/gatekeeper.yaml` de ArgoCD cai controller.
+
+Nhung diem quan trong trong file nay:
+
+- `metadata.name: gatekeeper`
+- `spec.source.repoURL`: Helm repo cua Gatekeeper
+- `spec.source.chart: gatekeeper`
+- `destination.namespace: gatekeeper-system`
+- `sync-wave` dat truoc constraints
+
+Trong repo nay, app controller dang duoc dat:
+
+- sync-wave `10`
+- chart `gatekeeper`
+- chart version `3.16.3`
+
+Neu ve sau chart version nay khong con phu hop voi cluster cua ban, day la file dau tien can doi.
+
+#### Buoc 3: Tao app de ArgoCD quan ly constraints
+
+Tao `argocd/apps/gatekeeper-constraints.yaml`.
+
+Muc dich:
+
+- cho ArgoCD doc thu muc `gatekeeper/constraints/`
+- tách phan policy khoi phan controller
+- cho de sync lai policy ma khong dong vao install Gatekeeper
+
+Nhung diem can co:
+
+- `metadata.name: gatekeeper-constraints`
+- `spec.source.path: gatekeeper/constraints`
+- `destination.namespace: gatekeeper-system`
+- `sync-wave` lon hon app controller
+
+Trong repo nay, app nay dang la sync-wave `11`.
+
+#### Buoc 4: Tao 4 ConstraintTemplate
+
+Trong repo nay, toi da tao 4 template sau:
+
+- `gatekeeper/constraints/k8sdisallowlatesttag-template.yaml`
+- `gatekeeper/constraints/k8srequirelimits-template.yaml`
+- `gatekeeper/constraints/k8sdisallowrootuser-template.yaml`
+- `gatekeeper/constraints/k8sdisallowhostnetwork-template.yaml`
+
+Moi template:
+
+- la `ConstraintTemplate`
+- co sync-wave `0`
+- chua logic Rego de Gatekeeper sinh ra CRD tuong ung
+
+Luu y:
+
+- Slide goi y co the lay tu `gatekeeper-library`
+- Trong repo nay toi chon viet template local de repo tu chua, de review va hoc lai de hon
+
+#### Buoc 5: Tao 4 Constraint
+
+Trong repo nay, toi da tao 4 constraint sau:
+
+- `gatekeeper/constraints/k8sdisallowlatesttag.yaml`
+- `gatekeeper/constraints/k8srequirelimits.yaml`
+- `gatekeeper/constraints/k8sdisallowrootuser.yaml`
+- `gatekeeper/constraints/k8sdisallowhostnetwork.yaml`
+
+Moi constraint:
+
+- co `enforcementAction: deny`
+- co sync-wave `1`
+- match vao:
+  - `Pod`
+  - `Deployment`
+  - `StatefulSet`
+  - `DaemonSet`
+  - `Rollout`
+- exclude:
+  - `kube-system`
+  - `argocd`
+  - `gatekeeper-system`
+
+Ly do exclude namespace he thong:
+
+- tranh Gatekeeper tu chan chinh no
+- tranh chan ArgoCD/system components
+- giam rui ro luc moi bat enforce
+
+#### Buoc 6: Dam bao dung thu tu sync
+
+Thu tu can dung:
+
+1. app Gatekeeper controller duoc sync truoc
+2. `ConstraintTemplate` duoc apply
+3. `Constraint` duoc apply
+
+Trong repo nay, thu tu duoc dat bang:
+
+- `argocd/apps/gatekeeper.yaml` -> sync-wave `10`
+- `argocd/apps/gatekeeper-constraints.yaml` -> sync-wave `11`
+- `ConstraintTemplate` -> sync-wave `0`
+- `Constraint` -> sync-wave `1`
+
+Noi dung nay quan trong vi:
+
+- neu constraint vao truoc template -> ArgoCD se loi vi CRD chua ton tai
+- neu template/constraint vao truoc controller -> webhook va CRD co the chua san sang
+
+#### Buoc 7: Commit va push
+
+- `git add argocd/apps/gatekeeper.yaml argocd/apps/gatekeeper-constraints.yaml gatekeeper plan_morning.md`
+- `git commit -m "Add Gatekeeper policies for admission control"`
+- `git push`
+
+#### Buoc 8: ArgoCD sync
+
+Trong ArgoCD, kiem tra theo thu tu:
+
+1. app `gatekeeper`
+2. app `gatekeeper-constraints`
+
+Ket qua mong doi:
+
+- `gatekeeper` -> `Synced/Healthy`
+- `gatekeeper-constraints` -> `Synced/Healthy`
+
+Neu `gatekeeper-constraints` loi:
+
+- kiem tra `gatekeeper` da len xong chua
+- kiem tra template co apply thanh cong chua
+- kiem tra `repoURL` cua app co tro dung repo fork khong
+
+#### Buoc 9: Test reject/pass
+
+Sau khi sync xong, tao cac manifest test va thu apply:
+
+- Pod dung image `nginx:latest` -> phai reject
+- Pod khong co `resources.limits` -> phai reject
+- Pod co `runAsUser: 0` -> phai reject
+- Pod co `hostNetwork: true` -> phai reject
+- Pod hop le -> phai pass
+
+Trong repo nay da co san bo test:
+
+- `gatekeeper/tests/pod-latest.yaml`
+- `gatekeeper/tests/pod-no-limits.yaml`
+- `gatekeeper/tests/pod-root-user.yaml`
+- `gatekeeper/tests/pod-hostnetwork.yaml`
+- `gatekeeper/tests/pod-valid.yaml`
+
+Lenh test mau:
+
+```bash
+kubectl apply -f gatekeeper/tests/pod-latest.yaml
+kubectl apply -f gatekeeper/tests/pod-no-limits.yaml
+kubectl apply -f gatekeeper/tests/pod-root-user.yaml
+kubectl apply -f gatekeeper/tests/pod-hostnetwork.yaml
+kubectl apply -f gatekeeper/tests/pod-valid.yaml
+```
 
 ### 4 luat bat buoc enforce
 
@@ -177,7 +363,7 @@ Khi review lai sau nay, chi can doi chieu 3 file tren voi muc tieu role va 4 len
 
 ### Cach lam an toan
 
-- Ban dau dat `enforcementAction: warn` de audit.
+- Ban dau co the dat `enforcementAction: warn` de audit.
 - Kiem tra resource hien tai cua platform co dang vi pham khong.
 - Dac biet kiem tra rollout `api`:
   - image da pin version,
@@ -185,6 +371,8 @@ Khi review lai sau nay, chi can doi chieu 3 file tren voi muc tieu role va 4 len
   - khong `runAsUser: 0`.
 - Sua workload cua platform neu can.
 - Sau khi sach loi moi chuyen sang `enforcementAction: deny`.
+
+Trong repo nay, toi da dat san `deny` vi app `api` hien tai da vuot qua 4 dieu kien tren. Neu ban lam lai o repo khac thi nen bat dau bang `warn`.
 
 ### Nghiem thu Gatekeeper
 
@@ -195,6 +383,25 @@ Thu deploy cac manifest test, ket qua phai nhu sau:
 - Pod co `runAsUser: 0` -> reject
 - Pod co `hostNetwork: true` -> reject
 - Pod hop le (version pinned + limits + non-root) -> pass
+
+### Ket qua hien tai da duoc tao trong repo nay
+
+- `argocd/apps/gatekeeper.yaml`
+- `argocd/apps/gatekeeper-constraints.yaml`
+- `gatekeeper/constraints/k8sdisallowlatesttag-template.yaml`
+- `gatekeeper/constraints/k8sdisallowlatesttag.yaml`
+- `gatekeeper/constraints/k8srequirelimits-template.yaml`
+- `gatekeeper/constraints/k8srequirelimits.yaml`
+- `gatekeeper/constraints/k8sdisallowrootuser-template.yaml`
+- `gatekeeper/constraints/k8sdisallowrootuser.yaml`
+- `gatekeeper/constraints/k8sdisallowhostnetwork-template.yaml`
+- `gatekeeper/constraints/k8sdisallowhostnetwork.yaml`
+
+Khi review lai sau nay, hay doi chieu 3 tang:
+
+1. app controller co len duoc khong
+2. template co duoc tao CRD khong
+3. constraint co reject dung 4 truong hop khong
 
 ## Phan 3: Custom policy bat buoc
 
