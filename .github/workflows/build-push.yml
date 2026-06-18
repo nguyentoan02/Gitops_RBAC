@@ -94,7 +94,8 @@ jobs:
       - name: Update rollout.yaml with new version
         run: |
           sed -i "s|image: .*|image: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}|g" app-api/rollout.yaml
-          sed -i "0,/value: \"v.*\"/s//value: \"v${{ steps.image.outputs.version }}\"/" app-api/rollout.yaml
+          sed -i "s|imagePullPolicy: .*|imagePullPolicy: Always|g" app-api/rollout.yaml
+          sed -i "0,/value: \"v.*\"/s//value: \"v${{ steps.semver.outputs.version }}\"/" app-api/rollout.yaml
 
       - name: Commit and push version update
         run: |
