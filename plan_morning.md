@@ -322,6 +322,15 @@ Ket qua mong doi:
 - `gatekeeper` -> `Synced/Healthy`
 - `gatekeeper-constraints` -> `Synced/Healthy`
 
+Neu app `gatekeeper` van `OutOfSync` nhung pods van chay:
+
+- kiem tra danh sach resource bi lech co phai la cac `CustomResourceDefinition` cua Gatekeeper khong
+- day la truong hop rat hay gap voi Helm chart + CRD
+- co the them `ignoreDifferences` trong `argocd/apps/gatekeeper.yaml` cho:
+  - `/metadata/annotations`
+  - `/spec/conversion/webhook/clientConfig/caBundle`
+- muc dich la bo qua cac field he thong/duoc inject sau khi apply, tranh app luc nao cung lech
+
 Neu `gatekeeper-constraints` loi:
 
 - kiem tra `gatekeeper` da len xong chua
