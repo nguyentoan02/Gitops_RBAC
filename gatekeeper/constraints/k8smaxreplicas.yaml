@@ -8,9 +8,11 @@ spec:
   enforcementAction: deny
   match:
     excludedNamespaces:
+    - default
     - kube-system
     - argocd
     - gatekeeper-system
+    - external-secrets
     kinds:
     - apiGroups: ["apps"]
       kinds: ["Deployment"]
@@ -18,4 +20,3 @@ spec:
       kinds: ["Rollout"]
   parameters:
     maxReplicas: 5
-

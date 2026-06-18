@@ -8,9 +8,11 @@ spec:
   enforcementAction: deny
   match:
     excludedNamespaces:
+    - default
     - kube-system
     - argocd
     - gatekeeper-system
+    - external-secrets
     kinds:
     - apiGroups: [""]
       kinds: ["Pod"]
@@ -18,4 +20,3 @@ spec:
       kinds: ["Deployment", "StatefulSet", "DaemonSet"]
     - apiGroups: ["argoproj.io"]
       kinds: ["Rollout"]
-
