@@ -22,10 +22,14 @@ spec:
     kind: CustomResourceDefinition
     jsonPointers:
     - /metadata/annotations
+    - /metadata/managedFields
+    - /status
     - /spec/conversion/webhook/clientConfig/caBundle
+    - /spec/preserveUnknownFields
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
+    - RespectIgnoreDifferences=true

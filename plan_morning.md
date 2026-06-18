@@ -328,8 +328,12 @@ Neu app `gatekeeper` van `OutOfSync` nhung pods van chay:
 - day la truong hop rat hay gap voi Helm chart + CRD
 - co the them `ignoreDifferences` trong `argocd/apps/gatekeeper.yaml` cho:
   - `/metadata/annotations`
+  - `/metadata/managedFields`
+  - `/status`
   - `/spec/conversion/webhook/clientConfig/caBundle`
+  - `/spec/preserveUnknownFields`
 - muc dich la bo qua cac field he thong/duoc inject sau khi apply, tranh app luc nao cung lech
+- them `RespectIgnoreDifferences=true` de ArgoCD ton trong phan ignore nay trong qua trinh sync
 
 Neu `gatekeeper-constraints` loi:
 
