@@ -26,14 +26,14 @@ spec:
           optional: true
       containers:
       - name: api
-        image: ghcr.io/nguyentoan02/w10-api:0.0.1
-        imagePullPolicy: Never
+        image: ghcr.io/nguyentoan02/w10-api:0.0.2
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           protocol: TCP
         env:
         - name: VERSION
-          value: "v0.0.1"
+          value: "v0.0.2"
         - name: ERROR_RATE
           value: "0"
         - name: DB_PASSWORD_PATH
