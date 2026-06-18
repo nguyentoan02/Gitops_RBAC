@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://github.com/nguyentoan02/Gitops_RBAC.git
     path: app-api
-    targetRevision: main
+    targetRevision: master
   destination:
     server: https://kubernetes.default.svc
     namespace: demo

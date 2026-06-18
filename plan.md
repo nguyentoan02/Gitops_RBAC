@@ -1,225 +1,149 @@
-# Kế hoạch chạy project
+# Plan chay va kiem thu 1 kich ban
 
-## 1. Mục tiêu tôi hiểu từ repo
+## Muc tieu
 
-Repo này không phải app local đơn lẻ để `npm start` hay `python app.py` là đủ. Đây là một demo GitOps/Kubernetes gồm:
+Chay full demo GitOps/Kubernetes va chi kiem thu 1 kich ban:
 
-- 1 Flask API ở `src/api`
-- Argo Rollouts để canary deploy
-- Prometheus + Alertmanager để scrape metrics và bắn alert
-- Argo CD theo mô hình App of Apps để sync toàn bộ manifest
+- deploy thanh cong
+- `ERROR_RATE = "0"`
+- rollout di het 10% -> 50% -> 100%
+- `AnalysisRun` pass
 
-Mục tiêu chạy đúng nghĩa của repo là dựng một cluster local, cài Argo CD + Argo Rollouts + kube-prometheus-stack, rồi để Argo CD sync các app trong repo.
+Toi chon kich ban nay vi no it rui ro nhat, de xac nhan toan bo duong chay co ban da dung:
 
-## 2. Những gì tôi đã kiểm tra
+- Argo CD sync duoc repo
+- Argo Rollouts hoat dong
+- Prometheus scrape duoc metrics
+- AnalysisTemplate danh gia thanh cong
 
-- README mô tả quy trình chạy bằng `minikube` + `kubectl`
-- API image trong rollout đang dùng image public: `ghcr.io/Vuong-Bach/w10-api:0.0.1`
-- `src/api/Dockerfile` và `src/api/app.py` tồn tại, nên có thể build image local nếu không muốn phụ thuộc image public
-- `argocd/root.yaml` và các child application cần trỏ tới repo:
-  - `https://github.com/nguyentoan02/Gitops_RBAC.git`
-- Nhưng `git remote origin` của working copy hiện tại là:
-  - `https://github.com/nguyentoan02/Gitops_RBAC.git`
+## Dieu kien dau vao
 
-## 3. Rủi ro / blocker cần review trước
+Can co san:
 
-### Rủi ro lớn nhất: Argo CD đang sync sai repo
+- Docker Desktop
+- `minikube`
+- `kubectl`
+- `git`
+- mang ra ngoai de keo chart/image/repo
 
-Nếu chạy nguyên trạng:
+Repo da duoc chot:
 
-- Argo CD sẽ không deploy từ thư mục local hiện tại
-- Nó sẽ pull manifest từ repo được khai báo trong manifest Argo CD
-- Kết quả có thể khác nội dung bạn đang review trong máy
+- `https://github.com/nguyentoan02/Gitops_RBAC.git`
+- branch `master`
 
-Tôi coi đây là blocker số 1 trước khi chạy thật.
+Email alert da cau hinh local:
 
-### Rủi ro 2: phụ thuộc mạng ngoài
+- `app-alert/email-secret.yaml`
 
-Để chạy full stack, cluster cần kéo:
+## Kich ban duy nhat can chay
 
-- manifest Argo CD từ GitHub
-- Helm chart `argo-rollouts`
-- Helm chart `kube-prometheus-stack`
-- container image như `ghcr.io/Vuong-Bach/w10-api:0.0.1`
+### Buoc 1 - Tao cluster
 
-Nếu mạng chặn GitHub/GHCR/Helm repo thì plan cần đổi sang preload image/chart.
+```bash
+minikube start -p w10 --driver=docker
+kubectl config use-context w10
+kubectl get nodes
+```
 
-### Rủi ro 3: alert email chưa sẵn sàng
+Ket qua mong doi:
 
-`app-alert/email-secret.yaml` chưa có file thật, chỉ có file mẫu. Phần email alert là optional, nhưng nếu muốn demo full thì phải tạo secret trước.
+- cluster `w10` len thanh cong
+- `kubectl get nodes` tra ve node `Ready`
 
-## 4. Kế hoạch chạy đề xuất
+### Buoc 2 - Cai Argo CD
 
-### Pha A - chốt nguồn deploy
+```bash
+kubectl create ns argocd
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl -n argocd rollout status deploy/argocd-server
+```
 
-Mục tiêu: đảm bảo Argo CD sync đúng repo cần chạy.
+Ket qua mong doi:
 
-Phương án đề xuất:
+- `argocd-server` chay `successfully rolled out`
 
-1. Sửa toàn bộ `repoURL` trong `argocd/*.yaml` sang repo thật sẽ được Argo CD theo dõi
-2. Repo đích đã chốt:
-   - `https://github.com/nguyentoan02/Gitops_RBAC.git`
-3. Nếu muốn test đúng code local đang mở, cần cập nhật:
-   - `argocd/root.yaml`
-   - `argocd/apps/app-common.yaml`
-   - `argocd/apps/app-analysis.yaml`
-   - `argocd/apps/app-alert.yaml`
-   - `argocd/apps/app-api.yaml`
-4. Chỉ sau khi chốt xong repoURL mới nên apply Argo CD root app
+### Buoc 3 - Deploy App of Apps
 
-Kết quả mong đợi:
+```bash
+kubectl apply -f argocd/root.yaml
+```
 
-- Argo CD sync đúng source
-- Tránh tình trạng “chạy được nhưng không phải code đang review”
+Ket qua mong doi:
 
-### Pha B - chuẩn bị môi trường local
+- cac app `common`, `kube-prometheus-stack`, `argo-rollouts`, `analysis`, `alert`, `api` duoc tao
 
-Mục tiêu: sẵn sàng một cluster local đủ để chạy demo.
+Theo doi:
 
-Checklist:
+```bash
+kubectl get applications -n argocd
+kubectl get pods -n argo-rollouts
+kubectl get pods -n monitoring
+kubectl get pods -n demo
+```
 
-1. Cài sẵn:
-   - Docker Desktop
-   - `kubectl`
-   - `minikube`
-   - `git`
-2. Tạo cluster:
-   - `minikube start -p w10 --driver=docker`
-3. Chuyển context:
-   - `kubectl config use-context w10`
-4. Kiểm tra cluster sống:
-   - `kubectl get nodes`
+### Buoc 4 - Apply secret email
 
-Kết quả mong đợi:
+```bash
+kubectl apply -f app-alert/email-secret.yaml
+```
 
-- Có cluster `w10`
-- `kubectl` nói chuyện được với cluster
+Neu namespace `monitoring` chua ton tai, cho app `kube-prometheus-stack` sync xong roi moi apply lai lenh tren.
 
-### Pha C - cài Argo CD
+Ket qua mong doi:
 
-1. Tạo namespace:
-   - `kubectl create ns argocd`
-2. Cài manifest chuẩn của Argo CD
-3. Chờ `argocd-server` lên
-4. Lấy mật khẩu admin ban đầu
-5. Port-forward UI nếu cần review trực quan
+- secret `alertmanager-email` duoc tao trong namespace `monitoring`
 
-Kết quả mong đợi:
+### Buoc 5 - Xac nhan rollout thanh cong
 
-- Namespace `argocd` hoạt động
-- Truy cập được Argo CD UI/API
+File [app-api/rollout.yaml](D:\W10\temp\app-api\rollout.yaml:1) hien dang de:
 
-### Pha D - deploy App of Apps
+- `ERROR_RATE = "0"`
 
-1. Apply:
-   - `kubectl apply -f argocd/root.yaml`
-2. Theo dõi các child application được tạo:
-   - `common`
-   - `kube-prometheus-stack`
-   - `argo-rollouts`
-   - `analysis`
-   - `alert`
-   - `api`
-3. Kiểm tra thứ tự sync wave:
-   - wave `-1`: common
-   - wave `0`: infrastructure
-   - wave `1`: analysis + alert
-   - wave `2`: api
+Kiem tra rollout va analysis:
 
-Kết quả mong đợi:
+```bash
+kubectl get rollout api -n demo
+kubectl get rollout api -n demo -w
+kubectl get analysisrun -n demo
+kubectl get pods -n demo -l app=api
+```
 
-- Argo CD tạo đủ child apps
-- Hạ tầng monitoring/rollout lên trước khi app API sync
+Ket qua mong doi:
 
-### Pha E - xác minh runtime
+- rollout tang qua cac step canary
+- `AnalysisRun` co trang thai thanh cong
+- rollout dat trang thai `Healthy`
+- pod API chay on dinh
 
-1. Kiểm tra namespace:
-   - `demo`
-   - `monitoring`
-   - `argo-rollouts`
-2. Kiểm tra rollout:
-   - `kubectl get rollout api -n demo`
-3. Kiểm tra pod API:
-   - `kubectl get pods -n demo -l app=api`
-4. Kiểm tra ServiceMonitor và metric scrape
-5. Kiểm tra AnalysisRun:
-   - `kubectl get analysisrun -n demo`
+### Buoc 6 - Kiem tra metrics
 
-Kết quả mong đợi:
+```bash
+kubectl run test-query --image=curlimages/curl:latest --rm -i --restart=Never -n monitoring -- curl -s "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=api:success_rate:5m"
+```
 
-- API pod chạy
-- `ServiceMonitor` được Prometheus nhận
-- `AnalysisRun` sinh ra khi rollout chạy
+Ket qua mong doi:
 
-### Pha F - test các kịch bản demo
+- query tra ve gia tri gan `1`
 
-#### Kịch bản 1: rollout thành công
+## Tieu chi pass
 
-1. Set `ERROR_RATE = "0"` trong `app-api/rollout.yaml`
-2. Commit + push repo mà Argo CD đang theo dõi
-3. Quan sát canary đi qua 10% -> 50% -> 100%
+Buoi chay duoc coi la pass khi:
 
-Kết quả mong đợi:
+1. Argo CD tao day du child applications
+2. Rollout `api` len thanh cong trong namespace `demo`
+3. `AnalysisRun` pass
+4. Prometheus query `api:success_rate:5m` tra ve ket qua hop le
 
-- Analysis pass
-- Rollout promote thành công
+## Neu co loi, check theo thu tu nay
 
-#### Kịch bản 2: rollout thất bại
+1. `kubectl get applications -n argocd`
+2. `kubectl get pods -n argocd`
+3. `kubectl get pods -n argo-rollouts`
+4. `kubectl get pods -n monitoring`
+5. `kubectl get pods -n demo`
+6. `kubectl describe rollout api -n demo`
+7. `kubectl describe analysisrun -n demo <ten-analysisrun>`
 
-1. Set `ERROR_RATE = "0.15"`
-2. Commit + push
-3. Theo dõi `AnalysisRun` fail
-4. Kiểm tra rollback
+## Ket luan
 
-Kết quả mong đợi:
-
-- Success rate dưới ngưỡng `0.90`
-- Rollout không promote full, hoặc bị rollback
-
-#### Kịch bản 3: bắn alert SLO
-
-1. Set `ERROR_RATE = "0.10"`
-2. Commit + push
-3. Đợi Prometheus rule đánh giá trong vài phút
-4. Nếu đã cấu hình email secret, kiểm tra mailbox
-
-Kết quả mong đợi:
-
-- Canary vẫn có thể pass
-- Rule `SLOViolation` fire vì success rate dưới `0.95`
-
-## 5. Phương án chạy tối thiểu nếu chỉ muốn verify code API
-
-Nếu chưa muốn dựng full Kubernetes stack, có thể chạy phần API riêng:
-
-1. Build image từ `src/api/Dockerfile`, hoặc
-2. Chạy Flask app local với env:
-   - `VERSION`
-   - `ERROR_RATE`
-3. Kiểm tra các endpoint:
-   - `/`
-   - `/healthz`
-   - `/metrics`
-
-Giá trị của phương án này:
-
-- verify được app Python
-- verify được metrics endpoint
-- nhưng không verify được GitOps, Rollouts, AnalysisTemplate, Alertmanager
-
-## 6. Thứ tự thực thi tôi đề xuất
-
-1. Sửa hoặc xác nhận lại `repoURL` trong Argo CD manifests
-2. Dựng `minikube`
-3. Cài Argo CD
-4. Apply `argocd/root.yaml`
-5. Theo dõi sync và fix lỗi image/chart nếu có
-6. Cấu hình email secret nếu cần demo alert
-7. Chạy các kịch bản thay đổi `ERROR_RATE`
-
-## 7. Review points tôi muốn bạn xác nhận
-
-1. Bạn muốn tôi chuẩn bị plan theo hướng:
-   - chỉ chạy API local
-   - hay chạy full GitOps/Kubernetes demo
-2. Bạn có muốn tôi tạo luôn file secret local cho Gmail App Password sau khi bạn chuẩn bị password không?
+Khong can chay nhieu kich ban luc nay. Chi can chay 1 kich ban thanh cong voi `ERROR_RATE = "0"` de xac nhan duong nen cua he thong da dung. Sau khi kich ban nay pass, moi nen chuyen sang test rollback hoac alert SLO.
