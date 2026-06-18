@@ -1,4 +1,19 @@
-# Plan Afternoon - Part 1 Runbook
+# Plan Afternoon Runbook
+
+## Muc tieu
+
+Tai lieu nay ghi lai cach lam va cach validate cho bai lab afternoon, de:
+
+- review lai nhung gi da implement
+- chay lai sau nay neu can
+- biet ro phan nao da xong, phan nao can thao tac tay
+
+Noi dung gom 2 phan:
+
+- Part 1: AWS Secrets Manager + External Secrets Operator
+- Part 2: Supply chain security voi Trivy + Cosign + Sigstore Policy Controller
+
+# Part 1 - Secrets Manager + External Secrets
 
 ## Muc tieu
 
@@ -41,8 +56,7 @@ Trong `app-api/rollout.yaml`:
 
 - Mount secret `db-secret` vao `/secrets`
 - Set `DB_PASSWORD_PATH=/secrets/password`
-- Dung image local `gitops-rbac-api:0.0.2`
-- Version app hien tai: `v0.0.2`
+- App doc password tu mounted file
 
 ### ESO
 
@@ -62,7 +76,7 @@ Ban can co:
 - External Secrets Operator da chay trong cluster
 - AWS CLI co quyen voi Secrets Manager
 
-## Cach chay phan 1
+## Cach chay Part 1
 
 ### B1 - Kiem tra cluster va ArgoCD
 
@@ -143,8 +157,6 @@ kubectl get secret aws-credentials -n demo
 
 ### B5 - De ArgoCD sync phan ESO
 
-Kiem tra:
-
 ```powershell
 kubectl get applications -n argocd
 ```
@@ -154,7 +166,7 @@ Ky vong:
 - `eso` la `Synced`
 - `eso` la `Healthy`
 
-## Cach validate yeu cau phan 1
+## Cach validate Part 1
 
 ### Test 1 - ESO sync secret thanh cong
 
@@ -222,7 +234,7 @@ Pass khi:
 - file `/secrets/password` trong pod doi theo
 - `/db-secret` van tra `password_found=true`
 
-## Ket qua da verify tren may nay
+## Ket qua da verify
 
 Da verify thanh cong:
 
@@ -230,22 +242,10 @@ Da verify thanh cong:
 - `SecretStore aws-store` la `Valid`
 - `ExternalSecret db-password` la `SecretSynced`
 - `db-secret` da duoc tao
-- pod API `v0.0.2` doc duoc secret thanh cong
-- endpoint `/` tra:
+- app doc duoc secret thanh cong
+- secret rotation da hoat dong
 
-```json
-{"db_password_loaded":true,"db_status":"connected","ok":true,"version":"v0.0.2"}
-```
-
-- endpoint `/db-secret` tra:
-
-```json
-{"password_found":true,"password_path":"/secrets/password","password_preview":"NewP@..."}
-```
-
-- file `/secrets/password` trong pod da co gia tri secret
-
-## Tieu chi pass phan 1
+## Tieu chi pass Part 1
 
 Pass khi tat ca dieu kien sau dung:
 
@@ -256,7 +256,7 @@ Pass khi tat ca dieu kien sau dung:
 - khi AWS secret doi, K8s secret cap nhat lai trong khoang 1 phut
 - app van doc duoc secret moi sau rotation
 
-# Plan Afternoon - Part 2 Runbook
+# Part 2 - Supply Chain Security
 
 ## Muc tieu
 
@@ -268,48 +268,95 @@ Hoan thanh phan 2 cua bai lab:
 - Cluster chi accept signed image thong qua Sigstore Policy Controller
 - unsigned image bi reject, signed image deploy duoc
 
-## Trang thai hien tai
+## File lien quan
 
-Da lam san trong repo local:
+### Workflow va repo
 
-- `.github/workflows/build-push.yml` da co build, scan, push, sign, update rollout
-- `.github/workflows/validate.yml` da them validate cho `k8s-policies/`
-- `argocd/apps/policies.yaml` da duoc tao
-- `k8s-policies/cluster-image-policy.yaml` da duoc tao va chen public key that
-- `scripts/install_policy_controller.ps1` da duoc tao
-- `.gitignore` da bo qua `cosign.key`
-- Gatekeeper constraints da duoc them exception cho namespace ha tang can thiet
+- `.github/workflows/build-push.yml`
+- `.github/workflows/validate.yml`
+- `.gitignore`
+- `README.md`
+- `runbook.md`
 
-Phan ban phai tu lam:
+### Policy va ArgoCD
 
-- tao GitHub Secret `COSIGN_PRIVATE_KEY`
-- tao GitHub Secret `COSIGN_PASSWORD`
+- `k8s-policies/cluster-image-policy.yaml`
+- `k8s-policies/README.md`
+- `argocd/apps/policies.yaml`
+- `scripts/install_policy_controller.ps1`
 
-## File va gia tri dang co tren may nay
+### App rollout
+
+- `app-api/rollout.yaml`
+
+## Logic da duoc implement
+
+### Build pipeline
+
+Trong `.github/workflows/build-push.yml`:
+
+- build image len GHCR
+- scan image bang Trivy
+- fail neu co `HIGH/CRITICAL`
+- sign image bang Cosign
+- update `app-api/rollout.yaml`
+- commit version moi ve repo
+
+### Sigstore policy
+
+Trong `k8s-policies/cluster-image-policy.yaml`:
+
+- require image `ghcr.io/nguyentoan02/w10-api*` phai co signature hop le
+- verify bang public key trong `cosign.pub`
+
+### ArgoCD
+
+Trong `argocd/apps/policies.yaml`:
+
+- sync policy manifests tu `k8s-policies/`
+
+### Policy controller
+
+Trong `scripts/install_policy_controller.ps1`:
+
+- install Sigstore Policy Controller bang Helm vao namespace `cosign-system`
+
+## Dieu kien truoc khi chay
+
+Ban can co:
+
+- repo GitHub dang dung GHCR
+- GitHub Actions dang chay duoc
+- cluster co the pull image tu GHCR
+- `cosign` da duoc cai local
+- Helm da duoc cai local
+
+## Gia tri dang dung tren may nay
 
 - private key local: `D:\W10\temp\cosign.key`
 - public key local: `D:\W10\temp\cosign.pub`
-- policy image signature: `k8s-policies/cluster-image-policy.yaml`
-- ArgoCD app policy: `argocd/apps/policies.yaml`
-
-Mat khau Cosign dang dung:
+- password Cosign:
 
 ```text
 W10-Lab-Cosign-2026!
 ```
 
-Khong commit `cosign.key`. Co the commit `cosign.pub`.
+Luu y:
 
-## Cach chay phan 2 tren repo nay
+- khong commit `cosign.key`
+- co the commit `cosign.pub`
+
+## Cach chay Part 2
 
 ### B1 - Tao GitHub Secrets
 
-Vao GitHub repo:
+Vao:
 
+- GitHub repo
 - `Settings`
 - `Secrets and variables`
 - `Actions`
-- `New repository secret`
+- `Repository secrets`
 
 Tao 2 secret:
 
@@ -318,56 +365,50 @@ Tao 2 secret:
 2. `COSIGN_PASSWORD`
    - value: `W10-Lab-Cosign-2026!`
 
+Khong dung `Environment secrets`.
+
 ### B2 - Push code Part 2
 
-Push toan bo thay doi Part 2 len branch `master`.
+Push tat ca thay doi Part 2 len branch `master`.
 
-### B3 - Trigger workflow CI
+### B3 - Trigger workflow build-push
 
 Workflow dang dung:
 
-- `/.github/workflows/build-push.yml`
+- `Build Scan Sign Push Image`
 
-Workflow nay da co san:
+Trigger:
+
+- push len `master`
+- hoac vao tab `Actions` roi `Run workflow`
+
+Workflow se lam:
 
 1. checkout
 2. tinh version
 3. login GHCR
-4. build image local
-5. Trivy scan
+4. build image
+5. scan Trivy
 6. push image
 7. resolve digest
-8. cai Cosign
+8. install Cosign
 9. sign image
 10. update `app-api/rollout.yaml`
 11. commit rollout moi
 12. push git tag
 
-Workflow dang trigger cho ca:
-
-- `master`
-- `main`
-
-Sau khi push, co the vao tab `Actions` de xem workflow `Build Scan Sign Push Image`.
-
-### B4 - Cai Policy Controller neu cluster chua co
-
-Chay:
+### B4 - Cai Sigstore Policy Controller
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install_policy_controller.ps1
 kubectl get pods -n cosign-system
 ```
 
-Pass khi pod `policy-controller-webhook` la `Running`.
+Pass khi:
 
-### B5 - De ArgoCD sync app policy
+- pod `policy-controller-webhook` la `Running`
 
-Sau khi push repo, ArgoCD root app se tao them app:
-
-- `policies`
-
-Kiem tra:
+### B5 - De ArgoCD sync app `policies`
 
 ```powershell
 kubectl get applications -n argocd
@@ -379,34 +420,42 @@ Pass khi:
 - `policies` la `Synced`
 - `policies` la `Healthy`
 
-## Cach validate yeu cau phan 2
+### B6 - Xac nhan rollout cua api dung image signed tu GHCR
+
+```powershell
+kubectl get rollout api -n demo -o yaml
+```
+
+Kiem tra cac gia tri:
+
+- `image: ghcr.io/nguyentoan02/w10-api:<version>`
+- `imagePullPolicy: Always`
+
+Neu rollout dang `Suspended`, day la do canary pause step, khong phai loi.
+
+## Cach validate Part 2
 
 ### Test 1 - CI fail neu co CVE HIGH/CRITICAL
 
-Sau khi them Trivy:
+Sau khi push:
 
-- push mot thay doi de trigger workflow
 - vao GitHub Actions xem workflow
 
 Pass khi:
 
 - image sach thi workflow pass
-- neu image co CVE `HIGH/CRITICAL` thi workflow fail truoc khi deploy
+- neu image co CVE `HIGH/CRITICAL` thi workflow fail
 
 ### Test 2 - Image duoc sign
-
-Sau khi workflow pass:
-
-- image duoc push len GHCR
-- image co signature Cosign
-
-Verify:
 
 ```powershell
 cosign verify --key .\cosign.pub ghcr.io/nguyentoan02/w10-api:<tag>
 ```
 
-Neu lenh `cosign` chua nhan do PATH chua refresh, mo shell moi hoac dung full path den file `cosign-windows-amd64.exe`.
+Neu `cosign` chua nhan do PATH chua refresh:
+
+- mo PowerShell moi
+- hoac dung full path toi file `cosign-windows-amd64.exe`
 
 Pass khi:
 
@@ -436,8 +485,6 @@ Pass khi:
 
 ### Test 5 - Unsigned image bi reject
 
-Thu deploy image unsigned:
-
 ```powershell
 kubectl run test-unsigned --image=ghcr.io/nguyentoan02/w10-api:unsigned-test -n demo
 ```
@@ -445,11 +492,9 @@ kubectl run test-unsigned --image=ghcr.io/nguyentoan02/w10-api:unsigned-test -n 
 Pass khi:
 
 - webhook reject request
-- thong diep loi co y nghia lien quan den verify signature
+- thong diep loi lien quan den verify signature
 
 ### Test 6 - Signed image deploy duoc
-
-Thu deploy image da qua CI va da sign:
 
 ```powershell
 kubectl run test-signed --image=ghcr.io/nguyentoan02/w10-api:<tag> -n demo
@@ -458,6 +503,64 @@ kubectl run test-signed --image=ghcr.io/nguyentoan02/w10-api:<tag> -n demo
 Pass khi:
 
 - pod duoc tao thanh cong
+
+### Test 7 - Kiem tra app `api` sau rollout
+
+```powershell
+kubectl get pods -n demo -l app=api -o wide
+kubectl get rollout -n demo api
+kubectl get svc -n demo
+```
+
+Pass khi:
+
+- pod moi cua `api` len `Running`
+- service `api` van ton tai
+- rollout khong con bi `ErrImageNeverPull`
+
+## Van de da gap va cach xu ly
+
+### Trivy action version sai
+
+Da gap:
+
+- `aquasecurity/trivy-action@0.24.0` khong ton tai
+
+Da sua:
+
+- doi sang `aquasecurity/trivy-action@v0.36.0`
+
+### Rollout bi `ErrImageNeverPull`
+
+Nguyen nhan:
+
+- workflow doi image sang GHCR
+- nhung rollout lai de `imagePullPolicy: Never`
+
+Da sua:
+
+- workflow duoc cap nhat de doi `imagePullPolicy: Always`
+- live rollout tren cluster da duoc patch lai
+
+### ArgoCD hien `Suspended`
+
+Nguyen nhan:
+
+- rollout dung canary strategy co pause step
+
+Day khong phai loi neu pod moi van chay duoc.
+
+Neu can promote nhanh:
+
+```powershell
+kubectl argo rollouts promote api -n demo
+```
+
+### `kube-prometheus-stack` van `Progressing`
+
+Day la van de rieng cua monitoring stack, khong phai loi cua Part 2.
+
+Khong can sua no neu muc tieu la hoan thanh lab secrets va supply chain cho `api`.
 
 ## Thu tu thuc hien de tranh bi tac
 
@@ -476,7 +579,7 @@ Ly do:
 
 - neu bat policy truoc khi image cua app da co signature, cluster co the tu chan chinh app cua ban
 
-## Tieu chi pass phan 2
+## Tieu chi pass Part 2
 
 Pass khi tat ca dieu kien sau dung:
 
@@ -488,9 +591,15 @@ Pass khi tat ca dieu kien sau dung:
 - unsigned image bi reject
 - signed image deploy duoc
 
-## Luu y rieng cho repo nay
+## Trang thai hien tai
 
-- workflow hien tai trigger ca `master` va `main`
-- `app-api/rollout.yaml` hien van phuc vu Part 1 bang image local; sau khi CI chay pass, workflow se tu commit image GHCR moi
-- repo da co exception Gatekeeper cho namespace ha tang lien quan den policy controller
-- nen luu `cosign.pub` trong repo de verify, nhung khong bao gio commit `cosign.key`
+Tinh den luc viet file nay:
+
+- Part 1 da lam xong va da verify
+- Part 2 da implement xong tren repo
+- GitHub Secrets da co the tao tay
+- policy controller da co the install bang script
+- ArgoCD app `policies` da co
+- rollout `api` da chay duoc voi image GHCR signed
+
+Neu can chay lai, uu tien lam theo cac buoc trong file nay thay vi thao tac nho le.
