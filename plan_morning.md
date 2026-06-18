@@ -325,6 +325,10 @@ Neu `gatekeeper-constraints` loi:
 - kiem tra `gatekeeper` da len xong chua
 - kiem tra template co apply thanh cong chua
 - kiem tra `repoURL` cua app co tro dung repo fork khong
+- neu ArgoCD bao loi kieu "resource type not found" voi `K8s...` constraint custom kind:
+  - nguyen nhan thuong la `ConstraintTemplate` chua kip tao CRD luc ArgoCD dry-run
+  - cach xu ly la them `SkipDryRunOnMissingResource=true` vao `argocd/apps/gatekeeper-constraints.yaml`
+  - sync lai sau khi Gatekeeper controller da `Healthy`
 
 #### Buoc 9: Test reject/pass
 

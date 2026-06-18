@@ -35,6 +35,58 @@ Email alert da cau hinh local:
 
 - `app-alert/email-secret.yaml`
 
+## Cach bat lai sau khi tat may / tat Docker / tat minikube
+
+Neu ban da chay thanh cong truoc do va chi can mo lai moi truong, khong can cai lai tu dau.
+
+Thu tu chay:
+
+1. Mo Docker Desktop va cho Docker len on dinh
+2. Bat lai minikube profile `w10`
+3. Chuyen `kubectl` ve dung context
+4. Kiem tra cluster va app
+5. Neu can xem UI thi port-forward lai Argo CD
+
+Lenh can chay:
+
+```powershell
+minikube start -p w10 --driver=docker
+kubectl config use-context w10
+kubectl get nodes
+kubectl get applications -n argocd
+kubectl get pods -n demo
+kubectl get pods -n monitoring
+```
+
+Neu rollout dang dung image local rieng:
+
+```powershell
+minikube image load gitops-rbac-api:0.0.1 -p w10
+```
+
+Luu y:
+
+- Image local trong Docker cua may ban co the can load lai vao `minikube` sau khi bat lai moi truong
+- Neu app `api` bi loi image sau khi bat lai, build va load lai:
+
+```powershell
+docker build -t gitops-rbac-api:0.0.1 src/api
+minikube image load gitops-rbac-api:0.0.1 -p w10
+kubectl apply -f app-api/service.yaml
+kubectl apply -f app-api/servicemonitor.yaml
+kubectl apply -f app-api/rollout.yaml
+```
+
+Neu muon mo lai Argo CD UI:
+
+```powershell
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+```
+
+Sau do vao:
+
+- `https://localhost:8080`
+
 ## Kich ban duy nhat can chay
 
 ### Buoc 1 - Tao cluster
