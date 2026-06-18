@@ -13,6 +13,8 @@ spec:
     - argocd
     - gatekeeper-system
     - external-secrets
+    - cosign-system
+    - sigstore-system
     kinds:
     - apiGroups: ["apps"]
       kinds: ["Deployment"]

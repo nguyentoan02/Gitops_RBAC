@@ -1,9 +1,10 @@
-# Build and push Docker image to GitHub Container Registry
-name: Build and Push Image
+# Build, scan, sign, and push Docker image to GitHub Container Registry
+name: Build Scan Sign Push Image
 
 on:
   push:
     branches:
+      - master
       - main
     paths:
       - 'src/api/**'
@@ -37,6 +38,15 @@ jobs:
           version_format: "${major}.${minor}.${patch}"
           bump_each_commit: false
 
+      - name: Set image name
+        id: image
+        shell: bash
+        run: |
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${REGISTRY}/${owner}/w10-api" >> "$GITHUB_OUTPUT"
+          echo "version=${{ steps.semver.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=v${{ steps.semver.outputs.version }}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
@@ -44,28 +54,47 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest
-            type=raw,value=${{ steps.semver.outputs.version }}
-            type=sha,prefix=v${{ steps.semver.outputs.version }}-
+      - name: Build image locally for scanning
+        run: |
+          docker build \
+            -t ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }} \
+            -t ${{ steps.image.outputs.name }}:${{ steps.image.outputs.sha_tag }} \
+            ./src/api
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
         with:
-          context: ./src/api
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          image-ref: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
+          severity: HIGH,CRITICAL
+          exit-code: 1
+          ignore-unfixed: true
+
+      - name: Push image tags
+        run: |
+          docker push ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}
+          docker push ${{ steps.image.outputs.name }}:${{ steps.image.outputs.sha_tag }}
+
+      - name: Resolve pushed image digest
+        id: digest
+        shell: bash
+        run: |
+          digest="$(docker image inspect ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }} --format='{{index .RepoDigests 0}}')"
+          echo "value=${digest}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.7.0
+
+      - name: Sign image
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ${{ steps.digest.outputs.value }}
 
       - name: Update rollout.yaml with new version
         run: |
-          sed -i "s|image: ghcr.io/.*/w10-api:.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.semver.outputs.version }}|g" app-api/rollout.yaml
-          sed -i "s|value: \"v.*\"|value: \"v${{ steps.semver.outputs.version }}\"|g" app-api/rollout.yaml
+          sed -i "s|image: .*|image: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.version }}|g" app-api/rollout.yaml
+          sed -i "0,/value: \"v.*\"/s//value: \"v${{ steps.image.outputs.version }}\"/" app-api/rollout.yaml
 
       - name: Commit and push version update
         run: |
@@ -76,10 +105,14 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "chore: bump version to v${{ steps.semver.outputs.version }}"
-            git push
+            git push origin HEAD:${GITHUB_REF_NAME}
           fi
 
       - name: Create git tag
         run: |
-          git tag v${{ steps.semver.outputs.version }}
-          git push origin v${{ steps.semver.outputs.version }}
+          if git rev-parse "v${{ steps.semver.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag already exists"
+          else
+            git tag v${{ steps.semver.outputs.version }}
+            git push origin v${{ steps.semver.outputs.version }}
+          fi

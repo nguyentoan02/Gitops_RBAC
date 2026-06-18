@@ -8,139 +8,97 @@ Hoan thanh phan 1 cua bai lab:
 - Secret duoc lay tu AWS Secrets Manager qua External Secrets Operator
 - App doc secret qua mounted volume `/secrets/password`
 - Khi secret doi tren AWS, Kubernetes secret `db-secret` cap nhat lai trong `<= 60s`
-- App thay duoc secret moi ma khong can sua code hay hard-code password
+- App thay duoc secret moi ma khong can hard-code password
 
-## Nhung gi da duoc sua trong repo
+## File lien quan
 
-### File moi
+### Manifest ESO
 
 - `k8s-eso/secret-store.yaml`
 - `k8s-eso/external-secret.yaml`
 - `argocd/apps/eso.yaml`
 
-### File da sua
+### App va rollout
 
 - `src/api/app.py`
 - `app-api/rollout.yaml`
-- `.github/workflows/validate.yml`
 
-## Logic da implement
+## Logic da duoc implement
 
-### 1. App da doc DB secret tu file
+### App
 
 Trong `src/api/app.py`:
 
-- Them env `DB_PASSWORD_PATH`, mac dinh `/secrets/password`
-- Route `/` tra ve:
+- Them `DB_PASSWORD_PATH`, mac dinh la `/secrets/password`
+- Route `/` tra them:
   - `db_status`
   - `db_password_loaded`
-- Them route debug `/db-secret`
-- App khong crash neu secret chua co; no se tra `SECRET_NOT_FOUND`
+- Route `/db-secret` de debug viec app co doc duoc secret hay khong
 
-### 2. Rollout da mount secret vao pod
+### Rollout
 
 Trong `app-api/rollout.yaml`:
 
-- Mount secret `db-secret` vao thu muc `/secrets`
-- Set env `DB_PASSWORD_PATH=/secrets/password`
-- Secret volume dang de `optional: true`
+- Mount secret `db-secret` vao `/secrets`
+- Set `DB_PASSWORD_PATH=/secrets/password`
+- Dung image local `gitops-rbac-api:0.0.2`
+- Version app hien tai: `v0.0.2`
 
-Ly do de `optional: true`:
-
-- Pod van len duoc ngay ca khi `ExternalSecret` chua sync xong
-- Sau khi ESO tao `db-secret`, file secret se xuat hien trong volume
-
-### 3. GitOps manifests da co cho ESO objects
+### ESO
 
 Trong `k8s-eso/`:
 
-- `secret-store.yaml`: noi AWS Secrets Manager qua secret `aws-credentials`
-- `external-secret.yaml`: dong bo AWS secret `prod/db/password` thanh K8s secret `db-secret`
-
-Trong `argocd/apps/eso.yaml`:
-
-- ArgoCD se sync thu muc `k8s-eso/` vao namespace `demo`
+- `SecretStore` doc AWS Secrets Manager o region `ap-southeast-1`
+- `ExternalSecret` dong bo secret `prod/db/password` thanh K8s secret `db-secret`
+- `refreshInterval: 1m`
 
 ## Dieu kien truoc khi chay
 
 Ban can co:
 
 - Cluster dang chay
-- `kubectl` dang tro dung context cluster
-- ArgoCD da cai va `argocd/root.yaml` da duoc apply
-- External Secrets Operator controller da duoc cai vao cluster
-- AWS account/co quyen tao va doc secret trong Secrets Manager
-- Image local `gitops-rbac-api:0.0.1` build duoc va load vao cluster local
+- `kubectl` dang tro dung context
+- ArgoCD da chay
+- External Secrets Operator da chay trong cluster
+- AWS CLI co quyen voi Secrets Manager
 
-## Luu y ve AWS tren may nay
+## Cach chay phan 1
 
-Khi toi kiem tra:
-
-```powershell
-aws sts get-caller-identity
-```
-
-lenh dang fail voi loi proxy:
-
-```text
-Failed to connect to proxy URL: "http://127.0.0.1:9"
-```
-
-Truoc khi chay cac lenh AWS, ban can:
-
-- xoa proxy sai
-- hoac cau hinh proxy dung
-- hoac provide lai AWS environment/profile hop le
-
-Kiem tra nhanh:
+### B1 - Kiem tra cluster va ArgoCD
 
 ```powershell
-Get-ChildItem Env:HTTP_PROXY
-Get-ChildItem Env:HTTPS_PROXY
-Get-ChildItem Env:AWS_PROFILE
-aws configure list
-aws sts get-caller-identity
+kubectl get ns
+kubectl get applications -n argocd
 ```
 
-Neu `HTTP_PROXY`/`HTTPS_PROXY` dang tro toi `127.0.0.1:9`, bo no di:
+Ky vong:
+
+- co namespace `demo`, `argocd`
+- app `eso` ton tai
+
+### B2 - Kiem tra controller External Secrets Operator
 
 ```powershell
-Remove-Item Env:HTTP_PROXY -ErrorAction SilentlyContinue
-Remove-Item Env:HTTPS_PROXY -ErrorAction SilentlyContinue
-```
-
-## B1 - Cai External Secrets Operator controller
-
-Phan nay la dependency bat buoc. Repo hien da co `SecretStore` va `ExternalSecret`, nhung neu cluster chua co controller thi se khong reconcile duoc.
-
-Co the cai nhanh bang manifest:
-
-```powershell
-kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.10.5/deploy/crds/bundle.yaml
-kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.10.5/deploy/operator.yaml
-```
-
-Sau do verify:
-
-```powershell
-kubectl get pods -n external-secrets
+kubectl get pods -A | findstr external-secrets
 kubectl get crd | findstr external-secrets
 ```
 
-Pass neu:
+Ky vong:
 
-- co namespace/controller cua `external-secrets`
+- controller external-secrets dang `Running`
 - co CRD `secretstores.external-secrets.io`
 - co CRD `externalsecrets.external-secrets.io`
 
-## B2 - Tao AWS secret tren Secrets Manager
+### B3 - Tao hoac update AWS secret
 
-Secret ma manifests dang dung la:
+Neu may co proxy loi:
 
-- Name: `prod/db/password`
-- Region: `ap-southeast-1`
+```powershell
+$env:HTTP_PROXY=$null
+$env:HTTPS_PROXY=$null
+```
 
-Tao moi:
+Tao secret:
 
 ```powershell
 aws secretsmanager create-secret `
@@ -149,7 +107,7 @@ aws secretsmanager create-secret `
   --region ap-southeast-1
 ```
 
-Neu secret da ton tai, update:
+Neu da ton tai, update:
 
 ```powershell
 aws secretsmanager update-secret `
@@ -158,7 +116,7 @@ aws secretsmanager update-secret `
   --region ap-southeast-1
 ```
 
-Verify:
+Kiem tra:
 
 ```powershell
 aws secretsmanager get-secret-value `
@@ -168,11 +126,7 @@ aws secretsmanager get-secret-value `
   --output text
 ```
 
-## B3 - Tao K8s secret chua AWS credentials
-
-`k8s-eso/secret-store.yaml` dang doi mot secret Kubernetes ten `aws-credentials` trong namespace `demo`.
-
-Tao secret:
+### B4 - Tao secret AWS credentials trong Kubernetes
 
 ```powershell
 kubectl create secret generic aws-credentials `
@@ -181,257 +135,362 @@ kubectl create secret generic aws-credentials `
   --from-literal=secret-access-key=YOUR_AWS_SECRET_ACCESS_KEY
 ```
 
-Verify:
+Kiem tra:
 
 ```powershell
 kubectl get secret aws-credentials -n demo
 ```
 
-Quan trong:
+### B5 - De ArgoCD sync phan ESO
 
-- Khong commit access key vao Git
-- Access key can co quyen doc `prod/db/password`
-
-## B4 - Build image local de chay app moi
-
-Repo dang dung image local trong `app-api/rollout.yaml`, nen can build lai image de co code doc secret moi.
-
-```powershell
-docker build -t gitops-rbac-api:0.0.1 src/api
-minikube image load gitops-rbac-api:0.0.1 -p w10
-```
-
-Neu khong dung minikube profile `w10`, doi lai ten profile cho dung.
-
-## B5 - Dua manifests moi vao cluster
-
-### Cach 1 - Neu dang dung ArgoCD App of Apps
-
-Commit/push cac file moi:
-
-```powershell
-git add src/api/app.py app-api/rollout.yaml k8s-eso argocd/apps/eso.yaml .github/workflows/validate.yml plan_afternoon.md
-git commit -m "feat: add ESO secret sync for DB password"
-git push origin master
-```
-
-Sau do verify app `eso` duoc root app nhat vao:
+Kiem tra:
 
 ```powershell
 kubectl get applications -n argocd
-argocd app sync eso
-argocd app wait eso --health --sync
 ```
 
-### Cach 2 - Neu ban muon apply tay de test nhanh truoc
+Ky vong:
+
+- `eso` la `Synced`
+- `eso` la `Healthy`
+
+## Cach validate yeu cau phan 1
+
+### Test 1 - ESO sync secret thanh cong
 
 ```powershell
-kubectl apply -f k8s-eso/secret-store.yaml
-kubectl apply -f k8s-eso/external-secret.yaml
-kubectl apply -f app-api/service.yaml
-kubectl apply -f app-api/servicemonitor.yaml
-kubectl apply -f app-api/rollout.yaml
+kubectl get secretstore,externalsecret,secret -n demo
 ```
 
-Neu namespace `demo` chua co:
+Pass khi:
 
-```powershell
-kubectl apply -f app-common/demo-namespace.yaml
-```
+- `aws-store` la `Valid`
+- `db-password` la `SecretSynced`
+- co `secret/db-secret`
 
-## B6 - Verify ESO da sync secret
-
-Kiem tra cac object:
-
-```powershell
-kubectl get secretstore -n demo
-kubectl get externalsecret -n demo
-kubectl get secret db-secret -n demo
-kubectl describe externalsecret db-password -n demo
-```
-
-Doc password tu K8s secret:
-
-```powershell
-kubectl get secret db-secret -n demo -o jsonpath="{.data.password}"
-```
-
-Gia tri tra ve la base64. Tren PowerShell co the decode:
+### Test 2 - K8s secret co dung gia tri
 
 ```powershell
 $b64 = kubectl get secret db-secret -n demo -o jsonpath="{.data.password}"
 [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
 ```
 
-Pass neu:
+Pass khi gia tri giai ma ra dung password AWS hien tai.
 
-- `SecretStore` ton tai
-- `ExternalSecret` co `READY=True`
-- `db-secret` da duoc tao
-- Password giai ma ra la `MyS3cr3tP@ss`
-
-## B7 - Verify app da doc duoc secret
-
-Kiem tra pod:
+### Test 3 - App doc duoc secret qua mounted file
 
 ```powershell
-kubectl get pods -n demo -l app=api
+$pod = (kubectl get pods -n demo -l app=api -o jsonpath="{.items[0].metadata.name}")
+$pod
+
+kubectl exec -n demo $pod -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/').read().decode())"
+kubectl exec -n demo $pod -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/db-secret').read().decode())"
+kubectl exec -n demo $pod -- cat /secrets/password
 ```
 
-Port-forward service:
+Pass khi:
+
+- `/` tra `db_password_loaded=true`
+- `/` tra `db_status=connected`
+- `/db-secret` tra `password_found=true`
+- `cat /secrets/password` ra dung password hien tai
+
+### Test 4 - Secret rotation trong <= 60s
 
 ```powershell
-kubectl port-forward -n demo svc/api 8080:80
-```
+$env:HTTP_PROXY=$null
+$env:HTTPS_PROXY=$null
 
-Trong terminal khac:
-
-```powershell
-curl http://127.0.0.1:8080/
-curl http://127.0.0.1:8080/db-secret
-```
-
-Ket qua mong doi:
-
-```json
-{
-  "ok": true,
-  "version": "v0.0.1",
-  "db_status": "connected",
-  "db_password_loaded": true
-}
-```
-
-Va:
-
-```json
-{
-  "password_path": "/secrets/password",
-  "password_found": true,
-  "password_preview": "MyS3c..."
-}
-```
-
-## B8 - Test secret rotation <= 60s
-
-Xem gia tri hien tai:
-
-```powershell
-$b64 = kubectl get secret db-secret -n demo -o jsonpath="{.data.password}"
-[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
-```
-
-Cap nhat secret tren AWS:
-
-```powershell
 aws secretsmanager update-secret `
   --secret-id prod/db/password `
-  --secret-string "NewP@ss123" `
+  --secret-string "AnotherP@ss456" `
   --region ap-southeast-1
-```
 
-Cho khoang 60 giay vi `refreshInterval: 1m`:
-
-```powershell
 Start-Sleep -Seconds 70
-```
 
-Doc lai secret tren cluster:
-
-```powershell
 $b64 = kubectl get secret db-secret -n demo -o jsonpath="{.data.password}"
 [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))
+
+$pod = (kubectl get pods -n demo -l app=api -o jsonpath="{.items[0].metadata.name}")
+kubectl exec -n demo $pod -- cat /secrets/password
+kubectl exec -n demo $pod -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8080/db-secret').read().decode())"
 ```
 
-Kiem tra app:
+Pass khi:
 
-```powershell
-curl http://127.0.0.1:8080/db-secret
-curl http://127.0.0.1:8080/
+- K8s secret doi sang `AnotherP@ss456`
+- file `/secrets/password` trong pod doi theo
+- `/db-secret` van tra `password_found=true`
+
+## Ket qua da verify tren may nay
+
+Da verify thanh cong:
+
+- `eso` la `Synced/Healthy`
+- `SecretStore aws-store` la `Valid`
+- `ExternalSecret db-password` la `SecretSynced`
+- `db-secret` da duoc tao
+- pod API `v0.0.2` doc duoc secret thanh cong
+- endpoint `/` tra:
+
+```json
+{"db_password_loaded":true,"db_status":"connected","ok":true,"version":"v0.0.2"}
 ```
 
-Pass neu:
+- endpoint `/db-secret` tra:
 
-- Kubernetes secret doi tu `MyS3cr3tP@ss` sang `NewP@ss123`
-- `/db-secret` van cho `password_found=true`
-- `/` van cho `db_status=connected`
-- khong can doi lai manifest
-- khong can hard-code password vao repo
-
-## B9 - Troubleshooting
-
-### 1. `ExternalSecret` khong READY
-
-Kiem tra:
-
-```powershell
-kubectl describe externalsecret db-password -n demo
-kubectl logs -n external-secrets deploy/external-secrets
+```json
+{"password_found":true,"password_path":"/secrets/password","password_preview":"NewP@..."}
 ```
 
-Thuong do:
-
-- sai AWS credentials
-- sai region
-- secret `prod/db/password` chua ton tai
-- cluster chua cai ESO controller
-
-### 2. Pod app len nhung `password_found=false`
-
-Kiem tra:
-
-```powershell
-kubectl exec -n demo deploy/api -- ls /secrets
-kubectl get secret db-secret -n demo -o yaml
-```
-
-Thuong do:
-
-- `db-secret` chua duoc tao
-- key trong secret khong phai `password`
-
-### 3. AWS CLI van loi proxy
-
-Kiem tra:
-
-```powershell
-Get-ChildItem Env:HTTP_PROXY
-Get-ChildItem Env:HTTPS_PROXY
-```
-
-Neu can, xoa env proxy roi chay lai `aws sts get-caller-identity`.
+- file `/secrets/password` trong pod da co gia tri secret
 
 ## Tieu chi pass phan 1
 
 Pass khi tat ca dieu kien sau dung:
 
-- ESO controller dang chay trong cluster
-- `aws-credentials` ton tai trong namespace `demo`
-- AWS Secrets Manager co secret `prod/db/password`
-- `SecretStore` + `ExternalSecret` deploy thanh cong
+- Secret plain text khong nam trong Git
+- `SecretStore` va `ExternalSecret` deploy thanh cong
 - `db-secret` duoc tao trong namespace `demo`
-- API doc duoc secret qua file `/secrets/password`
-- Khi AWS secret doi, cluster secret cap nhat trong `<= 60s`
-- App van truy cap duoc secret moi ma khong hard-code password vao Git
+- app doc duoc secret tu `/secrets/password`
+- khi AWS secret doi, K8s secret cap nhat lai trong khoang 1 phut
+- app van doc duoc secret moi sau rotation
 
-## Nhung gi toi chua the tu chay het tren may nay
+# Plan Afternoon - Part 2 Runbook
 
-Toi da hoan thanh phan code/manifests cho part 1, nhung chua the chay end-to-end vi hien con thieu hoac dang bi chan:
+## Muc tieu
 
-- AWS CLI hien fail do proxy `127.0.0.1:9`
-- Toi chua co gia tri that cua:
-  - `AWS_ACCESS_KEY_ID`
-  - `AWS_SECRET_ACCESS_KEY`
-- Toi chua xac nhan duoc cluster cua ban dang chay va da co ESO controller hay chua
+Hoan thanh phan 2 cua bai lab:
 
-## Neu ban muon toi chay tiep den muc verify that
+- CI build image len GHCR
+- CI scan image bang Trivy va fail neu co CVE `HIGH/CRITICAL`
+- CI sign image bang Cosign
+- Cluster chi accept signed image thong qua Sigstore Policy Controller
+- unsigned image bi reject, signed image deploy duoc
 
-Ban can cung cap mot trong cac nhom thong tin sau:
+## Trang thai hien tai
 
-1. AWS access key va secret key co quyen Secrets Manager, hoac profile AWS da config san va dung duoc
-2. Xac nhan cluster dang dung la gi:
-   - minikube
-   - Docker Desktop Kubernetes
-   - cluster khac
-3. Xac nhan da cai hay chua cai External Secrets Operator
-4. Neu may dang dung proxy, cho toi biet cach AWS CLI can duoc cau hinh de ra ngoai
+Da lam san trong repo local:
+
+- `.github/workflows/build-push.yml` da co build, scan, push, sign, update rollout
+- `.github/workflows/validate.yml` da them validate cho `k8s-policies/`
+- `argocd/apps/policies.yaml` da duoc tao
+- `k8s-policies/cluster-image-policy.yaml` da duoc tao va chen public key that
+- `scripts/install_policy_controller.ps1` da duoc tao
+- `.gitignore` da bo qua `cosign.key`
+- Gatekeeper constraints da duoc them exception cho namespace ha tang can thiet
+
+Phan ban phai tu lam:
+
+- tao GitHub Secret `COSIGN_PRIVATE_KEY`
+- tao GitHub Secret `COSIGN_PASSWORD`
+
+## File va gia tri dang co tren may nay
+
+- private key local: `D:\W10\temp\cosign.key`
+- public key local: `D:\W10\temp\cosign.pub`
+- policy image signature: `k8s-policies/cluster-image-policy.yaml`
+- ArgoCD app policy: `argocd/apps/policies.yaml`
+
+Mat khau Cosign dang dung:
+
+```text
+W10-Lab-Cosign-2026!
+```
+
+Khong commit `cosign.key`. Co the commit `cosign.pub`.
+
+## Cach chay phan 2 tren repo nay
+
+### B1 - Tao GitHub Secrets
+
+Vao GitHub repo:
+
+- `Settings`
+- `Secrets and variables`
+- `Actions`
+- `New repository secret`
+
+Tao 2 secret:
+
+1. `COSIGN_PRIVATE_KEY`
+   - value: toan bo noi dung file `D:\W10\temp\cosign.key`
+2. `COSIGN_PASSWORD`
+   - value: `W10-Lab-Cosign-2026!`
+
+### B2 - Push code Part 2
+
+Push toan bo thay doi Part 2 len branch `master`.
+
+### B3 - Trigger workflow CI
+
+Workflow dang dung:
+
+- `/.github/workflows/build-push.yml`
+
+Workflow nay da co san:
+
+1. checkout
+2. tinh version
+3. login GHCR
+4. build image local
+5. Trivy scan
+6. push image
+7. resolve digest
+8. cai Cosign
+9. sign image
+10. update `app-api/rollout.yaml`
+11. commit rollout moi
+12. push git tag
+
+Workflow dang trigger cho ca:
+
+- `master`
+- `main`
+
+Sau khi push, co the vao tab `Actions` de xem workflow `Build Scan Sign Push Image`.
+
+### B4 - Cai Policy Controller neu cluster chua co
+
+Chay:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_policy_controller.ps1
+kubectl get pods -n cosign-system
+```
+
+Pass khi pod `policy-controller-webhook` la `Running`.
+
+### B5 - De ArgoCD sync app policy
+
+Sau khi push repo, ArgoCD root app se tao them app:
+
+- `policies`
+
+Kiem tra:
+
+```powershell
+kubectl get applications -n argocd
+```
+
+Pass khi:
+
+- co app `policies`
+- `policies` la `Synced`
+- `policies` la `Healthy`
+
+## Cach validate yeu cau phan 2
+
+### Test 1 - CI fail neu co CVE HIGH/CRITICAL
+
+Sau khi them Trivy:
+
+- push mot thay doi de trigger workflow
+- vao GitHub Actions xem workflow
+
+Pass khi:
+
+- image sach thi workflow pass
+- neu image co CVE `HIGH/CRITICAL` thi workflow fail truoc khi deploy
+
+### Test 2 - Image duoc sign
+
+Sau khi workflow pass:
+
+- image duoc push len GHCR
+- image co signature Cosign
+
+Verify:
+
+```powershell
+cosign verify --key .\cosign.pub ghcr.io/nguyentoan02/w10-api:<tag>
+```
+
+Neu lenh `cosign` chua nhan do PATH chua refresh, mo shell moi hoac dung full path den file `cosign-windows-amd64.exe`.
+
+Pass khi:
+
+- `cosign verify` thanh cong
+
+### Test 3 - Policy Controller dang chay
+
+```powershell
+kubectl get pods -n cosign-system
+```
+
+Pass khi:
+
+- pod policy controller dang `Running`
+
+### Test 4 - ClusterImagePolicy active
+
+```powershell
+kubectl get clusterimagepolicy
+kubectl get clusterimagepolicy require-signed-w10-api -o yaml
+```
+
+Pass khi:
+
+- co policy `require-signed-w10-api`
+- policy match image `ghcr.io/nguyentoan02/w10-api*`
+
+### Test 5 - Unsigned image bi reject
+
+Thu deploy image unsigned:
+
+```powershell
+kubectl run test-unsigned --image=ghcr.io/nguyentoan02/w10-api:unsigned-test -n demo
+```
+
+Pass khi:
+
+- webhook reject request
+- thong diep loi co y nghia lien quan den verify signature
+
+### Test 6 - Signed image deploy duoc
+
+Thu deploy image da qua CI va da sign:
+
+```powershell
+kubectl run test-signed --image=ghcr.io/nguyentoan02/w10-api:<tag> -n demo
+```
+
+Pass khi:
+
+- pod duoc tao thanh cong
+
+## Thu tu thuc hien de tranh bi tac
+
+Nen lam dung thu tu sau:
+
+1. tao GitHub secrets
+2. push code Part 2
+3. de GitHub Actions build, scan, push, sign
+4. verify image da sign
+5. cai Policy Controller
+6. de ArgoCD sync policy
+7. test unsigned reject
+8. test signed pass
+
+Ly do:
+
+- neu bat policy truoc khi image cua app da co signature, cluster co the tu chan chinh app cua ban
+
+## Tieu chi pass phan 2
+
+Pass khi tat ca dieu kien sau dung:
+
+- CI scan image bang Trivy
+- CI fail neu co CVE `HIGH/CRITICAL`
+- image duoc push len GHCR
+- image duoc Cosign sign thanh cong
+- cluster co `ClusterImagePolicy`
+- unsigned image bi reject
+- signed image deploy duoc
+
+## Luu y rieng cho repo nay
+
+- workflow hien tai trigger ca `master` va `main`
+- `app-api/rollout.yaml` hien van phuc vu Part 1 bang image local; sau khi CI chay pass, workflow se tu commit image GHCR moi
+- repo da co exception Gatekeeper cho namespace ha tang lien quan den policy controller
+- nen luu `cosign.pub` trong repo de verify, nhung khong bao gio commit `cosign.key`

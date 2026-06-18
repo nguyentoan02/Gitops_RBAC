@@ -69,3 +69,12 @@ Ket qua mong doi:
 - `AnalysisRun` cu bi `Failed` van co the con trong namespace `demo`, dieu nay binh thuong va khong anh huong neu run moi nhat la `Successful`
 - ReplicaSet cu cung co the con trong lich su voi `DESIRED 0`, dieu nay binh thuong
 - Neu Argo CD tu sync lai image cu, kiem tra xem file `app-api/rollout.yaml` da duoc push len repo `master` chua
+
+## 8. Part 2
+
+Part 2 dung:
+
+- `/.github/workflows/build-push.yml` de build -> Trivy scan -> push -> Cosign sign
+- `k8s-policies/cluster-image-policy.yaml` de verify signed image
+
+Chi tiet trien khai va validate xem trong `plan_afternoon.md`

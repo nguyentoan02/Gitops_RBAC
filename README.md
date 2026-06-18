@@ -205,3 +205,15 @@ kubectl delete ns argocd
 minikube stop -p w10
 minikube delete -p w10
 ```
+
+## W10 Afternoon
+
+Phan buoi chieu bo sung 2 nhom bai:
+
+- Part 1: AWS Secrets Manager + External Secrets Operator
+- Part 2: Trivy + Cosign + Sigstore Policy Controller
+
+Tai lieu thao tac chi tiet:
+
+- `plan_afternoon.md`
+- `runbook.md`
