@@ -424,20 +424,152 @@ Khi review lai sau nay, hay doi chieu 3 tang:
 
 ## Phan 3: Custom policy bat buoc
 
-### Chon 1 de bai
+### Chon de bai trong repo nay
 
-- Reject `Deployment` neu `replicas > 5`
-- Bat buoc moi workload co label `owner`
-- Chi cho image tu registry cua ban, vi du `ghcr.io/<ban>/...`
+Toi chon policy:
 
-### Viec can lam
+- Reject workload neu `replicas > 5`
 
-- Tu viet 1 `ConstraintTemplate` bang Rego.
-- Tao 1 `Constraint` dung template do.
-- Dua vao repo de ArgoCD sync.
-- Tao 1 manifest vi pham de test reject.
-- Tao 1 manifest hop le de test pass.
-- Commit va push day du.
+Ly do chon:
+
+- de viet va de review
+- an toan voi platform hien tai
+- `app-api/rollout.yaml` dang `replicas: 4`, nen custom policy nay khong tu chan app cua ban
+
+### Muc tieu can dat
+
+- Tu viet 1 `ConstraintTemplate` bang Rego
+- Tao 1 `Constraint` tu template do
+- ArgoCD sync thanh cong
+- Co 1 manifest bi reject va 1 manifest hop le duoc pass
+
+### File can tao / sua
+
+- `gatekeeper/constraints/k8smaxreplicas-template.yaml`
+- `gatekeeper/constraints/k8smaxreplicas.yaml`
+- `gatekeeper/tests/deploy-too-many-replicas.yaml`
+- `gatekeeper/tests/deploy-ok-replicas.yaml`
+
+### Cach lam tung buoc
+
+#### Buoc 1: Chon policy khong pha platform
+
+Truoc khi viet custom policy, check app hien tai co bi anh huong khong.
+
+Trong repo nay:
+
+- `app-api/rollout.yaml` co `spec.replicas: 4`
+
+Neu ta dat nguong `maxReplicas: 5` thi:
+
+- app `api` pass
+- manifest test `replicas: 6` se bi reject
+
+#### Buoc 2: Tao `ConstraintTemplate`
+
+Tao file `gatekeeper/constraints/k8smaxreplicas-template.yaml`.
+
+File nay can co:
+
+- `apiVersion: templates.gatekeeper.sh/v1`
+- `kind: ConstraintTemplate`
+- `spec.crd.spec.names.kind: K8sMaxReplicas`
+- `spec.crd.spec.validation.openAPIV3Schema`
+- logic Rego doc:
+  - `input.review.object.spec.replicas`
+  - `input.parameters.maxReplicas`
+  - reject neu replicas lon hon nguong
+
+Trong repo nay, custom kind duoc tao ra la:
+
+- `K8sMaxReplicas`
+
+#### Buoc 3: Tao `Constraint`
+
+Tao file `gatekeeper/constraints/k8smaxreplicas.yaml`.
+
+Noi dung chinh:
+
+- `kind: K8sMaxReplicas`
+- `metadata.name: max-replicas-5`
+- `enforcementAction: deny`
+- `parameters.maxReplicas: 5`
+- match vao:
+  - `Deployment`
+  - `Rollout`
+- exclude:
+  - `kube-system`
+  - `argocd`
+  - `gatekeeper-system`
+
+#### Buoc 4: Commit va push
+
+- `git add gatekeeper/constraints gatekeeper/tests plan_morning.md`
+- `git commit -m "Add custom Gatekeeper max replicas policy"`
+- `git push`
+
+#### Buoc 5: ArgoCD sync
+
+Khong can tao app moi vi `gatekeeper-constraints` da doc san thu muc `gatekeeper/constraints/`.
+
+Can kiem tra:
+
+- app `gatekeeper-constraints` van `Synced/Healthy`
+- co them 2 resource moi:
+  - `ConstraintTemplate/k8smaxreplicas`
+  - `K8sMaxReplicas/max-replicas-5`
+
+#### Buoc 6: Test reject/pass
+
+Trong repo nay da co san:
+
+- `gatekeeper/tests/deploy-too-many-replicas.yaml`
+- `gatekeeper/tests/deploy-ok-replicas.yaml`
+
+Lenh test:
+
+```bash
+kubectl apply -f gatekeeper/tests/deploy-too-many-replicas.yaml
+kubectl apply -f gatekeeper/tests/deploy-ok-replicas.yaml
+```
+
+Ky vong:
+
+- `deploy-too-many-replicas.yaml` -> reject
+- `deploy-ok-replicas.yaml` -> pass
+
+Luu y:
+
+- sau khi vua tao xong `ConstraintTemplate` va `Constraint`, nen doi vai giay de Gatekeeper webhook nap rule moi
+- neu request test dau tien khong bi chan, thu lai voi mot resource name moi de xac nhan hanh vi admission sau khi policy da on dinh
+
+Neu can don dep manifest hop le sau khi test:
+
+```bash
+kubectl delete -f gatekeeper/tests/deploy-ok-replicas.yaml
+```
+
+### Nghiem thu custom policy
+
+- `ConstraintTemplate` custom duoc tao thanh cong
+- `Constraint` custom duoc tao thanh cong
+- Manifest `replicas: 6` bi reject
+- Manifest `replicas: 3` duoc pass
+
+### Ket qua hien tai da duoc tao trong repo nay
+
+- `gatekeeper/constraints/k8smaxreplicas-template.yaml`
+- `gatekeeper/constraints/k8smaxreplicas.yaml`
+- `gatekeeper/tests/deploy-too-many-replicas.yaml`
+- `gatekeeper/tests/deploy-ok-replicas.yaml`
+
+### Ket qua verify tren cluster hien tai
+
+- custom template `k8smaxreplicas` da tao thanh cong
+- constraint `max-replicas-5` da tao thanh cong
+- manifest vi pham voi ten moi bi webhook chan voi loi:
+  - `Deployment/... has replicas 6, exceeds allowed max 5`
+- manifest hop le duoc tao thanh cong
 
 ## Deliverable can co trong repo
 

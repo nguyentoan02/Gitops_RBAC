@@ -1,0 +1,21 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sMaxReplicas
+metadata:
+  name: max-replicas-5
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  enforcementAction: deny
+  match:
+    excludedNamespaces:
+    - kube-system
+    - argocd
+    - gatekeeper-system
+    kinds:
+    - apiGroups: ["apps"]
+      kinds: ["Deployment"]
+    - apiGroups: ["argoproj.io"]
+      kinds: ["Rollout"]
+  parameters:
+    maxReplicas: 5
+
