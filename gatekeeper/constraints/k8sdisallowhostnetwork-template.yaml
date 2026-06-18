@@ -9,6 +9,10 @@ spec:
     spec:
       names:
         kind: K8sDisallowHostNetwork
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties: {}
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -26,4 +30,3 @@ spec:
       pod_spec := input.review.object.spec.template.spec {
         input.review.kind.kind != "Pod"
       }
-

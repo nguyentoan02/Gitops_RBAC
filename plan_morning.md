@@ -251,6 +251,8 @@ Luu y:
 
 - Slide goi y co the lay tu `gatekeeper-library`
 - Trong repo nay toi chon viet template local de repo tu chua, de review va hoc lai de hon
+- Vi dang dung `apiVersion: templates.gatekeeper.sh/v1`, moi `ConstraintTemplate` nen co `spec.crd.spec.validation.openAPIV3Schema` hop le
+- Neu thieu schema nay, API server co the tu choi tao `ConstraintTemplate`
 
 #### Buoc 5: Tao 4 Constraint
 

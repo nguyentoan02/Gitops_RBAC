@@ -9,6 +9,10 @@ spec:
     spec:
       names:
         kind: K8sDisallowLatestTag
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties: {}
   targets:
   - target: admission.k8s.gatekeeper.sh
     rego: |
@@ -31,4 +35,3 @@ spec:
         container := input.review.object.spec.template.spec.containers[_]
         image := container.image
       }
-
