@@ -62,7 +62,39 @@ Ket qua mong doi:
 
 - `argocd-server` chay `successfully rolled out`
 
-### Buoc 3 - Deploy App of Apps
+### Buoc 3 - Mo Argo CD UI de xem
+
+Port-forward:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+```
+
+Lay mat khau admin ban dau:
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
+```
+
+Decode dung tren PowerShell:
+
+```powershell
+[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}")))
+```
+
+Mo trinh duyet:
+
+- URL: `https://localhost:8080`
+- user: `admin`
+- password: gia tri vua decode
+
+Trong UI, can xem:
+
+- app `root`
+- cac child app `common`, `kube-prometheus-stack`, `argo-rollouts`, `analysis`, `alert`, `api`
+- trang thai `Synced` va `Healthy`
+
+### Buoc 4 - Deploy App of Apps
 
 ```bash
 kubectl apply -f argocd/root.yaml
@@ -81,7 +113,7 @@ kubectl get pods -n monitoring
 kubectl get pods -n demo
 ```
 
-### Buoc 4 - Apply secret email
+### Buoc 5 - Apply secret email
 
 ```bash
 kubectl apply -f app-alert/email-secret.yaml
@@ -93,7 +125,7 @@ Ket qua mong doi:
 
 - secret `alertmanager-email` duoc tao trong namespace `monitoring`
 
-### Buoc 5 - Xac nhan rollout thanh cong
+### Buoc 6 - Xac nhan rollout thanh cong
 
 File [app-api/rollout.yaml](D:\W10\temp\app-api\rollout.yaml:1) hien dang de:
 
@@ -115,7 +147,14 @@ Ket qua mong doi:
 - rollout dat trang thai `Healthy`
 - pod API chay on dinh
 
-### Buoc 6 - Kiem tra metrics
+Trong Argo CD UI, co the mo app `api` de xem:
+
+- resource `Rollout/api`
+- resource `Service/api`
+- resource `ServiceMonitor/api`
+- timeline sync va health
+
+### Buoc 7 - Kiem tra metrics
 
 ```bash
 kubectl run test-query --image=curlimages/curl:latest --rm -i --restart=Never -n monitoring -- curl -s "http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/query?query=api:success_rate:5m"
